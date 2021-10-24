@@ -1,0 +1,3 @@
+rootProject.name = "AIDL"
+include ':app'
+include ':aidl_user'
