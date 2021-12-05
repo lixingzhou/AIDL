@@ -12,4 +12,10 @@
         android:layout_height="wrap_content"
         android:text="添加书籍" />
 
+    <Button
+        android:id="@+id/btn_remove_listener"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="移除监听器" />
+
 </LinearLayout>

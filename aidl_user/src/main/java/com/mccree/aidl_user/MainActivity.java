@@ -8,7 +8,6 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.os.Messenger;
 import android.os.RemoteException;
 import android.util.Log;
 import android.view.View;
@@ -16,6 +15,7 @@ import android.widget.Toast;
 
 import com.example.aidl.Book;
 import com.example.aidl.BookManager;
+import com.example.aidl.IOnNewBookArrivedListener;
 
 import java.util.List;
 
@@ -26,7 +26,7 @@ import java.util.List;
  */
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
-    private static final String TAG = "AIDL_USER";
+    private static final String TAG = "Client_Aidl";
 
     //由AIDL文件生成的Java类
     private BookManager mBookManager = null;
@@ -41,6 +41,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         setContentView(R.layout.activity_main);
 
         findViewById(R.id.btn_add_book).setOnClickListener(this);
+        findViewById(R.id.btn_remove_listener).setOnClickListener(this);
     }
 
     @Override
@@ -48,6 +49,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         switch (v.getId()) {
             case R.id.btn_add_book:
                 addBook();
+            case R.id.btn_remove_listener:
+                if (mBookManager != null) {
+                    try {
+                        mBookManager.unRegisterListener(mOnNewBookArrivedListener);
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
                 break;
         }
     }
@@ -82,7 +91,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Intent intent = new Intent();
 //        intent.setAction("com.example.aidl.bindService");
 //        intent.setPackage("com.example.aidl");
-        intent.setComponent(new ComponentName("com.example.aidl","com.example.aidl.MyService"));
+        intent.setComponent(new ComponentName("com.example.aidl", "com.example.aidl.MyService"));
         bindService(intent, mServiceConnection, Context.BIND_AUTO_CREATE);
     }
 
@@ -103,16 +112,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private  ServiceConnection mServiceConnection = new ServiceConnection() {
+    private ServiceConnection mServiceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             Log.e(TAG, "service connected");
 
             mBookManager = BookManager.Stub.asInterface(service);
-            Messenger messenger = new Messenger(service);
+//            Messenger messenger = new Messenger(service);
             try {
                 //绑定服务成功后，设置binder死亡代理
-                service.linkToDeath(mDeathRecipient,0);
+                service.linkToDeath(mDeathRecipient, 0);
             } catch (RemoteException e) {
                 e.printStackTrace();
             }
@@ -122,7 +131,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             if (mBookManager != null) {
                 try {
                     mBooks = mBookManager.getBooks();
-                    Log.e(TAG, "BookList：" + mBooks.toString());
+                    Log.v(TAG, "BookList：" + mBooks.toString());
+
+                    mBookManager.registerListener(mOnNewBookArrivedListener);
                 } catch (RemoteException e) {
                     e.printStackTrace();
                 }
@@ -136,19 +147,41 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     };
 
+
+    private final IOnNewBookArrivedListener mOnNewBookArrivedListener = new IOnNewBookArrivedListener.Stub() {
+        @Override
+        public void onNewBookArrived(Book newBook) throws RemoteException {
+            Log.w(TAG, "onNewBookArrived  -- " + (newBook == null ? null : newBook.toString()));
+        }
+    };
+
     private IBinder.DeathRecipient mDeathRecipient = new IBinder.DeathRecipient() {
         @Override
         public void binderDied() {
-            if (mBookManager  == null){
+            if (mBookManager == null) {
                 return;
             }
-            mBookManager.asBinder().unlinkToDeath(mDeathRecipient,0);
+            mBookManager.asBinder().unlinkToDeath(mDeathRecipient, 0);
             mBookManager = null;
 
-            // TODO: 2021/10/24  重新绑定远程服务
-//            attemptToBindService();
+            /*if (!mBound) {
+                attemptToBindService();
+            }*/
 
         }
     };
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mBookManager.asBinder().isBinderAlive()) {
+            try {
+                mBookManager.unRegisterListener(mOnNewBookArrivedListener);
+//            xxx
+                unbindService(mServiceConnection);
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 }

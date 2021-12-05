@@ -11,16 +11,18 @@ import android.util.Log;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import androidx.annotation.NonNull;
 
 public class MyService extends Service {
 
+    private static final String TAG = "Server_Aidl";
     private static InnerHandler mHandler;
     private List<Book> mBooks = new ArrayList<>();
 
-    public MyService() {
-    }
+    private CopyOnWriteArrayList<IOnNewBookArrivedListener> mListeners = new CopyOnWriteArrayList<>();
+
 
     @Override
     public void onCreate() {
@@ -31,6 +33,7 @@ public class MyService extends Service {
         mBooks.add(book);
         mHandler = new InnerHandler(this);
         mHandler.sendEmptyMessage(InnerHandler.MSG_1);
+        mHandler.sendEmptyMessageDelayed(InnerHandler.MSG_2, 10 * 1000);
 
     }
 
@@ -44,6 +47,7 @@ public class MyService extends Service {
     private static class InnerHandler extends Handler {
 
         private static final int MSG_1 = 0x11;
+        private static final int MSG_2 = 0x12;
 
         private final WeakReference<MyService> weakReference;
 
@@ -58,11 +62,32 @@ public class MyService extends Service {
             if (service != null) {
                 switch (msg.what) {
                     case MSG_1:
-                        Log.d("testInfo", "Books :  = " + service.mBooks.toString());
-                        sendEmptyMessageDelayed(MSG_1, 2000);
+                        Log.v(TAG, "Books :  = " + service.mBooks.toString());
+                        sendEmptyMessageDelayed(MSG_1, 20 * 1000);
+                        break;
+
+                    case MSG_2:
+                        Book book = new Book("监听测试书籍", 200);
+                        try {
+                            service.onNewBookArrived(book);
+                        } catch (RemoteException e) {
+                            e.printStackTrace();
+                        }
+                        removeMessages(MSG_2);
+                        sendEmptyMessageDelayed(MSG_2, 5 * 1000);
                         break;
                 }
             }
+        }
+    }
+
+    private void onNewBookArrived(Book book) throws RemoteException {
+        if (!mBooks.contains(book)) {
+            mBooks.add(book);
+        }
+        Log.d(TAG, "onAddNewBook  --> " + (book == null ? null : book.toString()));
+        for (int i = 0; i < mListeners.size(); i++) {
+            mListeners.get(i).onNewBookArrived(book);
         }
     }
 
@@ -76,7 +101,7 @@ public class MyService extends Service {
         @Override
         public List getBooks() throws RemoteException {
             synchronized (this) {
-                Log.e("testInfo", "invoking getBooks() method , now the list is : " + mBooks.toString());
+                Log.e(TAG, "invoking getBooks() method , now the list is : " + mBooks.toString());
                 if (mBooks != null) {
                     return mBooks;
                 }
@@ -92,7 +117,7 @@ public class MyService extends Service {
                     mBooks = new ArrayList<>();
                 }
                 if (book == null) {
-                    Log.e("testInfo", "Book is null in In");
+                    Log.e(TAG, "Book is null in In");
                     book = new Book();
                 }
                 //尝试修改book的参数，主要是为了观察其到客户端的反馈
@@ -101,8 +126,24 @@ public class MyService extends Service {
                     mBooks.add(book);
                 }
                 //打印mBooks列表，观察客户端传过来的值
-                Log.e("testInfo", "invoking addBooks() method , now the list is : " + mBooks.toString());
+                Log.e(TAG, "invoking addBooks() method , now the list is : " + mBooks.toString());
             }
+        }
+
+        @Override
+        public void registerListener(IOnNewBookArrivedListener listener) throws RemoteException {
+            if (!mListeners.contains(listener)) {
+                mListeners.add(listener);
+            }
+            Log.w(TAG, "registerListener --  " + mListeners.size());
+        }
+
+        @Override
+        public void unRegisterListener(IOnNewBookArrivedListener listener) throws RemoteException {
+            if (mListeners.contains(listener)) {
+                mListeners.remove(listener);
+            }
+            Log.w(TAG, "unRegisterListener -- " + mListeners.size());
         }
     };
 
