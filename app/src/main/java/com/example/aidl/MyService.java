@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -21,7 +22,7 @@ public class MyService extends Service {
     private static InnerHandler mHandler;
     private List<Book> mBooks = new ArrayList<>();
 
-    private CopyOnWriteArrayList<IOnNewBookArrivedListener> mListeners = new CopyOnWriteArrayList<>();
+    private RemoteCallbackList<IOnNewBookArrivedListener> mListeners = new RemoteCallbackList<>();
 
 
     @Override
@@ -86,9 +87,15 @@ public class MyService extends Service {
             mBooks.add(book);
         }
         Log.d(TAG, "onAddNewBook  --> " + (book == null ? null : book.toString()));
-        for (int i = 0; i < mListeners.size(); i++) {
-            mListeners.get(i).onNewBookArrived(book);
+
+        int N = mListeners.beginBroadcast();
+        for (int i = 0; i < N; i++) {
+            IOnNewBookArrivedListener listener = mListeners.getBroadcastItem(i);
+            if (listener != null) {
+                listener.onNewBookArrived(book);
+            }
         }
+        mListeners.finishBroadcast();
     }
 
     @Override
@@ -132,19 +139,22 @@ public class MyService extends Service {
 
         @Override
         public void registerListener(IOnNewBookArrivedListener listener) throws RemoteException {
-            if (!mListeners.contains(listener)) {
-                mListeners.add(listener);
-            }
-            Log.w(TAG, "registerListener --  " + mListeners.size());
+            mListeners.register(listener);
+            showListenerSize("registerListener");
         }
 
         @Override
         public void unRegisterListener(IOnNewBookArrivedListener listener) throws RemoteException {
-            if (mListeners.contains(listener)) {
-                mListeners.remove(listener);
-            }
-            Log.w(TAG, "unRegisterListener -- " + mListeners.size());
+            mListeners.unregister(listener);
+            showListenerSize("unRegisterListener");
         }
     };
+
+    private void showListenerSize(String type) {
+        int N = mListeners.beginBroadcast();
+        Log.w(TAG, type + "  size = " + N);
+        mListeners.finishBroadcast();
+
+    }
 
 }
